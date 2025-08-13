@@ -3,6 +3,17 @@ type Parser<'a, Output> = dyn Fn(&'a str) -> ParseResult<'a, Output>;
 
 type ParserError<'a> = (&'a str, String);
 
+fn whitespace(source: &str) -> ParseResult<()> {
+    let mut chars = source.chars();
+    let mut end_index = 0;
+
+    while chars.next().is_some_and(|c| c.is_whitespace()) {
+        end_index += 1;
+    }
+
+    Ok((&source[end_index..], ()))
+}
+
 fn integer(source: &str) -> ParseResult<i64> {
     let mut chars = source.chars();
     let mut end_index = 0;
@@ -122,5 +133,12 @@ mod test {
         let (remainder, value) = integer(code).expect("Parsing failed");
         assert_eq!(value, -3);
         assert!(remainder.is_empty());
+    }
+
+    #[test]
+    fn parse_whitespace() {
+        let code = "   -3";
+        let (remainder, _value) = whitespace(code).expect("Parsing failed");
+        assert_eq!(remainder, "-3");
     }
 }
