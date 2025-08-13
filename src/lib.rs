@@ -3,6 +3,26 @@ type Parser<'a, Output> = dyn Fn(&'a str) -> ParseResult<'a, Output>;
 
 type ParserError<'a> = (&'a str, String);
 
+fn integer(source: &str) -> ParseResult<i64> {
+    let mut chars = source.chars();
+    let mut end_index = 0;
+
+    if source.starts_with("-") {
+        chars.next();
+        end_index += 1;
+    }
+
+    while chars.next().is_some_and(|c| c.is_numeric()) {
+        end_index += 1;
+    }
+
+    let parse_result = source[..end_index]
+        .parse::<i64>()
+        .map_err(|_| (source, "Expected integer".into()))?;
+
+    Ok((&source[end_index..], parse_result))
+}
+
 fn literal<'a>(source: &'a str, target: &str) -> ParseResult<'a, ()> {
     source
         .strip_prefix(target)
@@ -77,6 +97,30 @@ mod test {
         let code = "= 3";
         let (remainder, value) = literal(code, "= 3").expect("Parsing failed");
         assert_eq!(value, ());
+        assert!(remainder.is_empty());
+    }
+
+    #[test]
+    fn parse_integer() {
+        let code = "3";
+        let (remainder, value) = integer(code).expect("Parsing failed");
+        assert_eq!(value, 3);
+        assert!(remainder.is_empty());
+    }
+
+    #[test]
+    fn parse_long_integer() {
+        let code = "32232";
+        let (remainder, value) = integer(code).expect("Parsing failed");
+        assert_eq!(value, 32232);
+        assert!(remainder.is_empty());
+    }
+
+    #[test]
+    fn parse_negative_integer() {
+        let code = "-3";
+        let (remainder, value) = integer(code).expect("Parsing failed");
+        assert_eq!(value, -3);
         assert!(remainder.is_empty());
     }
 }
