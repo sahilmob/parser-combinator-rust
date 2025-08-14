@@ -14,6 +14,26 @@ where
     }
 }
 
+pub fn map<'a, P, RIN, F, ROUT>(parser: P, map_fn: F) -> impl Parser<'a, ROUT>
+where
+    P: Parser<'a, RIN>,
+    F: Fn(RIN) -> ROUT,
+{
+    move |source| {
+        parser
+            .parse(source)
+            .map(|(remainder, result)| (remainder, map_fn(result)))
+    }
+}
+
+pub fn optional<'a, P, R>(parser: P) -> impl Parser<'a, Option<R>>
+where
+    P: Parser<'a, R>,
+{
+    let mapped = map(parser, move |r| Some(r));
+    move |source| mapped.parse(source).or(Ok((source, None)))
+}
+
 pub fn left<'a, P1, P2, R1, R2>(parser1: P1, parser2: P2) -> impl Parser<'a, R1>
 where
     P1: Parser<'a, R1>,
@@ -235,6 +255,15 @@ mod test {
         let code = "foo";
         let pair_parser = left(identifier, whitespace);
         pair_parser.parse(code).unwrap();
+    }
+
+    #[test]
+    fn parse_identifier_whitespace_left_but_no_whitespace_optional() {
+        let code = "foo";
+        let pair_parser = left(identifier, optional(whitespace));
+        let (remainder, id) = pair_parser.parse(code).expect("Parsing failed");
+        assert_eq!(remainder, "");
+        assert_eq!(id, "foo");
     }
 
     #[test]
