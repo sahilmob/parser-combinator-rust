@@ -14,6 +14,32 @@ where
     }
 }
 
+pub fn left<'a, P1, P2, R1, R2>(parser1: P1, parser2: P2) -> impl Parser<'a, R1>
+where
+    P1: Parser<'a, R1>,
+    P2: Parser<'a, R2>,
+{
+    move |source| {
+        parser1.parse(source).and_then(|(remainder, r1)| {
+            parser2
+                .parse(remainder)
+                .map(|(final_remainder, _r2)| (final_remainder, r1))
+        })
+    }
+}
+
+pub fn right<'a, P1, P2, R1, R2>(parser1: P1, parser2: P2) -> impl Parser<'a, R2>
+where
+    P1: Parser<'a, R1>,
+    P2: Parser<'a, R2>,
+{
+    move |source| {
+        parser1
+            .parse(source)
+            .and_then(|(remainder, _r1)| parser2.parse(remainder))
+    }
+}
+
 pub fn pair<'a, P1, P2, R1, R2>(parser1: P1, parser2: P2) -> impl Parser<'a, (R1, R2)>
 where
     P1: Parser<'a, R1>,
@@ -192,5 +218,31 @@ mod test {
     #[should_panic]
     fn fail_on_empty_whitespace() {
         whitespace("").unwrap();
+    }
+
+    #[test]
+    fn parse_identifier_whitespace_left() {
+        let code = "foo   =-3";
+        let pair_parser = left(identifier, whitespace);
+        let (remainder, id) = pair_parser.parse(code).expect("Parsing failed");
+        assert_eq!(remainder, "=-3");
+        assert_eq!(id, "foo");
+    }
+
+    #[test]
+    #[should_panic]
+    fn parse_identifier_whitespace_left_but_no_whitespace() {
+        let code = "foo";
+        let pair_parser = left(identifier, whitespace);
+        pair_parser.parse(code).unwrap();
+    }
+
+    #[test]
+    fn parse_identifier_whitespace_right() {
+        let code = "foo   =-3";
+        let pair_parser = right(identifier, whitespace);
+        let (remainder, value) = pair_parser.parse(code).expect("Parsing failed");
+        assert_eq!(remainder, "=-3");
+        assert_eq!(value, ());
     }
 }
