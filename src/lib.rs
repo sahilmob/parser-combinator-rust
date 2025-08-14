@@ -262,7 +262,7 @@ mod test {
         let code = "foo";
         let pair_parser = left(identifier, optional(whitespace));
         let (remainder, id) = pair_parser.parse(code).expect("Parsing failed");
-        assert_eq!(remainder, "");
+        assert!(remainder.is_empty());
         assert_eq!(id, "foo");
     }
 
@@ -273,5 +273,19 @@ mod test {
         let (remainder, value) = pair_parser.parse(code).expect("Parsing failed");
         assert_eq!(remainder, "=-3");
         assert_eq!(value, ());
+    }
+
+    #[test]
+    fn parse_expression() {
+        let code = "foo = -3";
+        let equal_sign_parser = pair(
+            optional(whitespace),
+            pair(parser_literal("="), optional(whitespace)),
+        );
+        let pair_parser = pair(identifier, right(equal_sign_parser, integer));
+        let (remainder, (id, int)) = pair_parser.parse(code).expect("Parsing failed");
+        assert_eq!(id, "foo");
+        assert_eq!(int, -3);
+        assert!(remainder.is_empty());
     }
 }
