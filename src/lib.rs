@@ -14,6 +14,15 @@ where
     }
 }
 
+pub fn between<'a, PL, RL, P, R, PR, RR>(pl: PL, p: P, pr: PR) -> impl Parser<'a, R>
+where
+    PL: Parser<'a, RL>,
+    P: Parser<'a, R>,
+    PR: Parser<'a, RR>,
+{
+    right(pl, left(p, pr))
+}
+
 pub fn map<'a, P, RIN, F, ROUT>(parser: P, map_fn: F) -> impl Parser<'a, ROUT>
 where
     P: Parser<'a, RIN>,
@@ -284,6 +293,22 @@ mod test {
         );
         let pair_parser = pair(identifier, right(equal_sign_parser, integer));
         let (remainder, (id, int)) = pair_parser.parse(code).expect("Parsing failed");
+        assert_eq!(id, "foo");
+        assert_eq!(int, -3);
+        assert!(remainder.is_empty());
+    }
+
+    #[test]
+    fn parse_between_brackets() {
+        let code = "(foo = -3)";
+        let equal_sign_parser = pair(
+            optional(whitespace),
+            pair(parser_literal("="), optional(whitespace)),
+        );
+        let pair_parser = pair(identifier, right(equal_sign_parser, integer));
+        let between_brackets_parser =
+            between(parser_literal("("), pair_parser, parser_literal(")"));
+        let (remainder, (id, int)) = between_brackets_parser.parse(code).expect("Parsing failed");
         assert_eq!(id, "foo");
         assert_eq!(int, -3);
         assert!(remainder.is_empty());
