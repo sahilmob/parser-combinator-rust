@@ -1,9 +1,38 @@
 type ParseResult<'a, Output> = Result<(&'a str, Output), ParserError<'a>>;
-type Parser<'a, Output> = dyn Fn(&'a str) -> ParseResult<'a, Output>;
-
 type ParserError<'a> = (&'a str, String);
 
-fn whitespace(source: &str) -> ParseResult<()> {
+pub trait Parser<'a, Output> {
+    fn parse(&self, source: &'a str) -> ParseResult<'a, Output>;
+}
+
+impl<'a, F, Output> Parser<'a, Output> for F
+where
+    F: Fn(&'a str) -> ParseResult<'a, Output>,
+{
+    fn parse(&self, source: &'a str) -> ParseResult<'a, Output> {
+        self(source)
+    }
+}
+
+pub fn pair<'a, P1, P2, R1, R2>(parser1: P1, parser2: P2) -> impl Parser<'a, (R1, R2)>
+where
+    P1: Parser<'a, R1>,
+    P2: Parser<'a, R2>,
+{
+    move |source| {
+        parser1.parse(source).and_then(|(remainder, r1)| {
+            parser2
+                .parse(remainder)
+                .map(|(final_remainder, r2)| (final_remainder, (r1, r2)))
+        })
+    }
+}
+
+pub fn whitespace(source: &'_ str) -> ParseResult<'_, ()> {
+    if source.is_empty() {
+        return Err((source, "Unexpected EOF. Expected whitespace".into()));
+    }
+
     let mut chars = source.chars();
     let mut end_index = 0;
 
@@ -14,7 +43,7 @@ fn whitespace(source: &str) -> ParseResult<()> {
     Ok((&source[end_index..], ()))
 }
 
-fn integer(source: &str) -> ParseResult<i64> {
+pub fn integer(source: &'_ str) -> ParseResult<'_, i64> {
     let mut chars = source.chars();
     let mut end_index = 0;
 
@@ -34,18 +63,20 @@ fn integer(source: &str) -> ParseResult<i64> {
     Ok((&source[end_index..], parse_result))
 }
 
-fn literal<'a>(source: &'a str, target: &str) -> ParseResult<'a, ()> {
-    source
-        .strip_prefix(target)
-        .ok_or((source, format!("Expected literal '{}'", target)))
-        .map(|remainder| (remainder, ()))
+pub fn parser_literal<'a>(target: &'a str) -> impl Parser<'a, ()> {
+    move |source: &'a str| {
+        source
+            .strip_prefix(target)
+            .ok_or((source, format!("Expected literal '{}'", target)))
+            .map(|remainder| (remainder, ()))
+    }
 }
 
 fn valid_identifier(ch: char) -> bool {
     ch.is_alphabetic() || ch.is_numeric() || ch == '_'
 }
 
-fn identifier(source: &str) -> ParseResult<&str> {
+pub fn identifier(source: &'_ str) -> ParseResult<'_, &'_ str> {
     let mut chars = source.chars();
     let first = chars.next().ok_or((source, "Unexpected EOF".into()))?;
 
@@ -98,7 +129,7 @@ mod test {
     #[test]
     fn parse_literal() {
         let code = "= 3";
-        let (remainder, value) = literal(code, "=").expect("Parsing failed");
+        let (remainder, value) = parser_literal("=").parse(code).expect("Parsing failed");
         assert_eq!(value, ());
         assert_eq!(remainder, " 3");
     }
@@ -106,7 +137,7 @@ mod test {
     #[test]
     fn parse_long_literal() {
         let code = "= 3";
-        let (remainder, value) = literal(code, "= 3").expect("Parsing failed");
+        let (remainder, value) = parser_literal("= 3").parse(code).expect("Parsing failed");
         assert_eq!(value, ());
         assert!(remainder.is_empty());
     }
@@ -140,5 +171,26 @@ mod test {
         let code = "   -3";
         let (remainder, _value) = whitespace(code).expect("Parsing failed");
         assert_eq!(remainder, "-3");
+    }
+
+    #[test]
+    fn parse_identifier_whitespace_pair() {
+        let code = "foo   =-3";
+        let pair_parser = pair(identifier, whitespace);
+        let (remainder, (id, _)) = pair_parser.parse(code).expect("Parsing failed");
+        assert_eq!(remainder, "=-3");
+        assert_eq!(id, "foo");
+    }
+
+    #[test]
+    #[should_panic]
+    fn fail_on_empty_integer() {
+        integer("").unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn fail_on_empty_whitespace() {
+        whitespace("").unwrap();
     }
 }
