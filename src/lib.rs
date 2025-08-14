@@ -1,6 +1,11 @@
 type ParseResult<'a, Output> = Result<(&'a str, Output), ParserError<'a>>;
 type ParserError<'a> = (&'a str, String);
 
+pub enum Either<L, R> {
+    Left(L),
+    Right(R),
+}
+
 pub trait Parser<'a, Output> {
     fn parse(&self, source: &'a str) -> ParseResult<'a, Output>;
 }
@@ -11,6 +16,45 @@ where
 {
     fn parse(&self, source: &'a str) -> ParseResult<'a, Output> {
         self(source)
+    }
+}
+
+pub fn many<'a, P, R>(p: P) -> impl Parser<'a, Vec<R>>
+where
+    P: Parser<'a, R>,
+{
+    move |mut source: &'a str| {
+        if source.is_empty() {
+            return Err((source, "Unexpected EOF".into()));
+        }
+
+        let mut results = Vec::new();
+        while let Ok((new_source, result)) = p.parse(source) {
+            results.push(result);
+            source = new_source;
+        }
+
+        Ok((source, results))
+    }
+}
+
+pub fn either<'a, P1, R1, P2, R2>(p1: P1, p2: P2) -> impl Parser<'a, Either<R1, R2>>
+where
+    P1: Parser<'a, R1>,
+    P2: Parser<'a, R2>,
+{
+    move |source| {
+        let try_first = p1.parse(source);
+        if let Ok((r, v)) = try_first {
+            return Ok((r, Either::Left(v)));
+        }
+
+        let try_second = p2.parse(source);
+        if let Ok((r, v)) = try_second {
+            return Ok((r, Either::Right(v)));
+        }
+
+        Err((source, "TODO: err message".to_string()))
     }
 }
 
@@ -312,5 +356,15 @@ mod test {
         assert_eq!(id, "foo");
         assert_eq!(int, -3);
         assert!(remainder.is_empty());
+    }
+
+    #[test]
+    fn parse_many_integers() {
+        let source = "1 2 3 10 20 30";
+        let parser = many(left(integer, optional(whitespace)));
+        let (remainder, result) = parser.parse(source).expect("Parsing failed");
+
+        assert!(remainder.is_empty());
+        assert_eq!(result, vec![1, 2, 3, 10, 20, 30])
     }
 }
